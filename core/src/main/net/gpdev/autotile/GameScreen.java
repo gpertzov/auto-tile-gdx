@@ -29,7 +29,7 @@ public class GameScreen extends ScreenAdapter {
 
         // Auto generate a new map
         final AutoTiler autoTiler = new AutoTiler(MAP_WIDTH, MAP_HEIGHT, TILE_WIDTH, TILE_HEIGHT,
-                Gdx.files.internal("RPGTiles.png"));
+                Gdx.files.internal("RPGTiles.png"), 31);
         map = autoTiler.generateMap();
         renderer = new OrthogonalTiledMapRenderer(map, MAP_UNIT_SCALE);
     }
