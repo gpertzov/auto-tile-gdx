@@ -1,5 +1,6 @@
 package net.gpdev.autotile;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -8,19 +9,36 @@ import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
 import com.badlogic.gdx.maps.tiled.TiledMapTileSet;
 import com.badlogic.gdx.maps.tiled.tiles.StaticTiledMapTile;
 import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.Json;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.TreeSet;
 
 import static net.gpdev.autotile.AutoTiler.TILE_BITS.*;
 
+/**
+ * AutoTiler
+ *
+ * Procedurally generate a terrain map using "Wang Tiles" corner matching
+ */
 public class AutoTiler {
+
+    private static String TAG = "AutoTiler";
 
     private static final byte MATCH_ANY = 127;
 
+    // Each tile-set row should contain two main terrain tiles and 14 transition tiles
+    // (4 bit encoded tile indices: 0 - 15)
+    private static final int TERRAINS_PER_ROW = 2;
+    private static final int TILES_PER_TERRAIN = 16;
+
+    // Tile corners encoding
     public enum TILE_BITS {
-        TOP_LEFT(0), TOP_RIGHT(1), BOTTOM_LEFT(2), BOTTOM_RIGHT(3), TERRAIN_TYPE(4);
+        TOP_LEFT(0), TOP_RIGHT(1), BOTTOM_LEFT(2), BOTTOM_RIGHT(3);
 
         private final int value;
 
@@ -33,41 +51,69 @@ public class AutoTiler {
         }
     }
 
+    // Helper class for managing terrain transitions
+    public static class TerrainType {
+        private final byte id;
+        private final TreeSet<Byte> transitions;
+
+        public TerrainType(byte id) {
+            this.id = id;
+            this.transitions = new TreeSet<>();
+        }
+
+        public byte getId() {
+            return id;
+        }
+
+        public TreeSet<Byte> getTransitions() {
+            return transitions;
+        }
+    }
 
     private final int mapWidth;
     private final int mapHeight;
-    private final int tileWidth;
-    private final int tileHeight;
-    private final int numTiles;
-    private final FileHandle tilesFileHandle;
     private final Random random;
 
+    private int tileWidth;
+    private int tileHeight;
+    private List<List<Byte>> tileRowTerrains;
+    private Map<Byte, TerrainType> terrainTypes;
+    private Texture tilesTexture;
     private TiledMapTileSet tileSet;
     private TiledMap map;
     private TiledMapTileLayer mapLayer;
 
-
+    /**
+     * C-tor
+     *
+     * @param mapWidth          Map Width in tiles
+     * @param mapHeight         Map Height in tiles
+     * @param tilesetConfigFile FileHandle to tileset configuration file
+     */
     public AutoTiler(final int mapWidth,
                      final int mapHeight,
-                     final int tileWidth,
-                     final int tileHeight,
-                     final FileHandle tilesFileHandle,
-                     final int numTiles) {
-
+                     final FileHandle tilesetConfigFile) {
         this.mapWidth = mapWidth;
         this.mapHeight = mapHeight;
-        this.tileWidth = tileWidth;
-        this.tileHeight = tileHeight;
-        this.tilesFileHandle = tilesFileHandle;
-        this.numTiles = numTiles;
         this.random = new Random();
+
+        init(tilesetConfigFile);
     }
 
-    public TiledMap generateMap() {
-        if (map == null) {
-            initMap();
-        }
+    public int getTileWidth() {
+        return tileWidth;
+    }
 
+    public int getTileHeight() {
+        return tileHeight;
+    }
+
+    /**
+     * Procedurally generate a new terrain map
+     *
+     * @return The generated TileMap
+     */
+    public TiledMap generateMap() {
         // Iterate on map cells from bottom-left to top-right
         for (int row = 0; row < mapHeight; row++) {
             for (int col = 0; col < mapWidth; col++) {
@@ -82,35 +128,40 @@ public class AutoTiler {
         return map;
     }
 
+    /**
+     * Pick a tile for a certain map cell, based on its neighboring tiles
+     *
+     * @param col Map column
+     * @param row Map row
+     * @return The ID of the picked tile in the tileset
+     */
     private int pickTile(final int col, final int row) {
         // Init all match mask elements to "dont-care"
-        byte[] matchMask = new byte[]{MATCH_ANY, MATCH_ANY, MATCH_ANY, MATCH_ANY, MATCH_ANY};
+        byte[] matchMask = new byte[]{MATCH_ANY, MATCH_ANY, MATCH_ANY, MATCH_ANY};
 
-        // Get Left Tile Id
-        final int leftTileId = getTileId(col - 1, row);
-        if (leftTileId >= 0) {
-            // Extract tile bit codes
-            final byte[] leftBits = getTileBits(leftTileId);
+        // Update match mask according to left tile corners
+        updateMatchMaskForTile(matchMask,
+                col - 1, row,
+                TOP_LEFT.id(), TOP_RIGHT.id(),
+                BOTTOM_LEFT.id(), BOTTOM_RIGHT.id());
 
-            // Update match mask
-            matchMask[TERRAIN_TYPE.id()] = leftBits[TERRAIN_TYPE.id()];
-            matchMask[TOP_LEFT.id()] = leftBits[TOP_RIGHT.id()];
-            matchMask[BOTTOM_LEFT.id()] = leftBits[BOTTOM_RIGHT.id()];
+        // Update match mask according to bottom tile corners
+        updateMatchMaskForTile(matchMask,
+                col, row - 1,
+                BOTTOM_LEFT.id(), TOP_LEFT.id(),
+                BOTTOM_RIGHT.id(), TOP_RIGHT.id());
+
+        // Handle "special case" for terrain types without transition tiles
+        final int tileId = getTileId(col + 1, row - 1);
+        if (tileId >= 0) {
+            final byte tileCorner = getTerrainCodes(tileId)[TOP_RIGHT.id()];
+            final byte maskCorner = matchMask[TOP_LEFT.id()];
+            if (maskCorner != tileCorner) {
+                matchMask[TOP_RIGHT.id()] = terrainTypes.get(tileCorner).getTransitions().first();
+            }
         }
 
-        // Get Bottom Tile Id
-        final int bottTileId = getTileId(col, row - 1);
-        if (bottTileId >= 0) {
-            // Extract tile bit codes
-            final byte[] bottBits = getTileBits(bottTileId);
-
-            // Update match mask
-            matchMask[TERRAIN_TYPE.id()] = bottBits[TERRAIN_TYPE.id()];
-            matchMask[BOTTOM_LEFT.id()] = bottBits[TOP_LEFT.id()];
-            matchMask[BOTTOM_RIGHT.id()] = bottBits[TOP_RIGHT.id()];
-        }
-
-        // Find all tiles that corner match left & bottom tiles
+        // Find all tiles that match
         final List<Integer> matchingTiles = findMatchingTiles(matchMask);
 
         // Pick one of the matching tiles
@@ -119,19 +170,54 @@ public class AutoTiler {
         return matchingTiles.get(selectedTile);
     }
 
-    private List<Integer> findMatchingTiles(final byte[] mask) {
-        final List<Integer> matchingTiles = new ArrayList<Integer>();
+    /**
+     * Update the corner matching tiles based on the corners of a neighboring tile
+     *
+     * @param mask         The match mask [IN/OUT]
+     * @param col          Column of the tile to match
+     * @param row          Row of the tile to match
+     * @param mask_corner0 1st corner to match from the current tile
+     * @param tile_corner0 1st corner to match from the neighboring tile
+     * @param mask_corner1 2nd corner to match from the current tile
+     * @param tile_corner1 2nd corner to match from the neighboring tile
+     */
+    private void updateMatchMaskForTile(final byte[] mask,
+                                        final int col, final int row,
+                                        final int mask_corner0, final int tile_corner0,
+                                        final int mask_corner1, final int tile_corner1) {
+        // Get tile Id at position
+        final int tileId = getTileId(col, row);
 
-        final int numBits = mask.length;
+        if (tileId >= 0) {
+            // Extract tile bit codes
+            final byte[] tileCodes = getTerrainCodes(tileId);
+
+            // Update match mask
+            mask[mask_corner0] = tileCodes[tile_corner0];
+            mask[mask_corner1] = tileCodes[tile_corner1];
+        }
+    }
+
+    /**
+     * Find all tiles in our tileset which match the constraints of the match mask
+     *
+     * @param mask Match mask
+     * @return A list of matching tile IDs
+     */
+    private List<Integer> findMatchingTiles(final byte[] mask) {
+        final List<Integer> matchingTiles = new ArrayList<>();
+
+        final int maskLength = mask.length;
+        final int numTiles = tileSet.size();
         for (int i = 0; i < numTiles; i++) {
-            final byte[] bits = getTileBits(i);
+            final byte[] bits = getTerrainCodes(i);
             int j = 0;
-            for (; j < numBits; j++) {
+            for (; j < maskLength; j++) {
                 if (mask[j] != MATCH_ANY && mask[j] != bits[j]) {
                     break;
                 }
             }
-            if (j == numBits) {
+            if (j == maskLength) {
                 matchingTiles.add(i);
             }
         }
@@ -139,6 +225,13 @@ public class AutoTiler {
         return matchingTiles;
     }
 
+    /**
+     * Get the tile ID at a certain map cell
+     *
+     * @param col Column
+     * @param row Row
+     * @return The tile ID at map cell (col, row)
+     */
     private int getTileId(final int col, final int row) {
         if (col < 0 || row < 0 || col >= mapWidth || row >= mapHeight) {
             return -1;
@@ -147,21 +240,137 @@ public class AutoTiler {
         return mapLayer.getCell(col, row).getTile().getId();
     }
 
-    private byte[] getTileBits(final int tileId) {
-        return new byte[]{
+    /**
+     * Extract the terrain type codes from a specific tile ID
+     *
+     * @param tileId Tile ID
+     * @return An array of terrain codes for each tile corner
+     */
+    private byte[] getTerrainCodes(final int tileId) {
+        byte[] values = new byte[]{
                 (byte) (tileId & 0x1),
                 (byte) ((tileId & 0x2) >> 1),
                 (byte) ((tileId & 0x4) >> 2),
-                (byte) ((tileId & 0x8) >> 3),
-                (byte) ((tileId & 0x10) >> 4)
+                (byte) ((tileId & 0x8) >> 3)
         };
+
+        // Transform Terrain Id according to terrain defs
+        final int tilesRowIndex = tileId / TILES_PER_TERRAIN;
+        final List<Byte> terrainRow = tileRowTerrains.get(tilesRowIndex);
+        for (int i = 0; i < values.length; i++) {
+            values[i] = terrainRow.get(values[i]);
+        }
+
+        return values;
     }
 
-    private void initMap() {
+    /**
+     * Initialization routine
+     *
+     * @param tilesetConfigFile FileHandle to the tileset configuration file
+     */
+    private void init(FileHandle tilesetConfigFile) {
+        // Load config
+        Json json = new Json();
+        final TilesetConfig conf = json.fromJson(TilesetConfig.class, tilesetConfigFile);
+
+        // Validate texture path
+        final FileHandle tilesTextureHandle = Gdx.files.internal(conf.getTexturePath());
+        if (!tilesTextureHandle.exists() || tilesTextureHandle.isDirectory()) {
+            throw new IllegalArgumentException("Invalid Tile-set texture path");
+        }
+
+        // Validate tile dimensions
+        tileWidth = conf.getTileWidth();
+        if (tileWidth <= 0 || tileWidth > 128) {
+            throw new IllegalArgumentException("Invalid tile width");
+        }
+        tileHeight = conf.getTileHeight();
+        if (tileHeight <= 0 || tileHeight > 128) {
+            throw new IllegalArgumentException("Invalid tile height");
+        }
+
+        // Load terrain configuration
+        loadTerrainDefinitions(conf);
+
         // Load tiles texture
-        final Texture tilesTexture = new Texture(tilesFileHandle);
-        final Array<Texture> textures = Array.with(tilesTexture);
+        tilesTexture = new Texture(conf.getTexturePath());
+
+        try {
+            initMap();
+        } catch (Exception e) {
+            // Cleanup on error
+            tilesTexture.dispose();
+            throw e;
+        }
+    }
+
+    /**
+     * Load terrain definitions from tileset config,
+     * Pre-compute some look-up tables
+     *
+     * @param config The loaded tileset configuration object
+     */
+    private void loadTerrainDefinitions(TilesetConfig config) {
+        final Array<Array<String>> terrainDefs = config.getTerrainDefs();
+        final HashMap<String, Byte> nameToIdMap = new HashMap<>();
+        terrainTypes = new HashMap<>();
+        tileRowTerrains = new ArrayList<>();
+
+        byte currentTerrainId = 0;
+        for (final Array<String> terrainDefsRow : terrainDefs) {
+            if (terrainDefsRow.size != TERRAINS_PER_ROW) {
+                throw new IllegalArgumentException(
+                        "Each terrain_defs row must contain exactly " + TERRAINS_PER_ROW + " terrain types");
+            }
+
+            final List<Byte> terrainRow = new ArrayList<>(TERRAINS_PER_ROW);
+
+            // Generate an Id for each terrain type
+            for (final String terrainName : terrainDefsRow) {
+                TerrainType terrainType;
+                Byte id = nameToIdMap.get(terrainName);
+                if (id == null) {
+                    // Create new terrain type entity
+                    id = currentTerrainId++;
+                    nameToIdMap.put(terrainName, id);
+                    terrainType = new TerrainType(id);
+                    terrainType.getTransitions().add(id);
+                    terrainTypes.put(id, terrainType);
+                }
+
+                // Add terrain Id to row
+                terrainRow.add(id);
+            }
+
+            // Add row to terrains configuration
+            this.tileRowTerrains.add(terrainRow);
+
+            // Mark transition between the above terrain types as valid
+            final byte firstTerrainId = terrainRow.get(0);
+            final byte secondTerrainId = terrainRow.get(1);
+            terrainTypes.get(firstTerrainId).getTransitions().add(secondTerrainId);
+            terrainTypes.get(secondTerrainId).getTransitions().add(firstTerrainId);
+        }
+    }
+
+    /**
+     * Create a new map with an empty layer
+     */
+    private void initMap() {
+        // Split into tiles
         final TextureRegion[][] splitTiles = TextureRegion.split(tilesTexture, tileWidth, tileHeight);
+        final int numRows = splitTiles.length;
+        if (numRows != tileRowTerrains.size()) {
+            throw new IllegalArgumentException("Tileset rows do not match terrain definitions");
+        }
+
+        // Validate number of tiles per row
+        for (int i = 0; i < numRows; i++) {
+            if (splitTiles[i].length != TILES_PER_TERRAIN) {
+                throw new IllegalArgumentException("Each tileset row must have exactly " + TILES_PER_TERRAIN + " tiles");
+            }
+        }
 
         // Create tileset
         tileSet = new TiledMapTileSet();
@@ -176,8 +385,9 @@ public class AutoTiler {
 
         // Create an empty map
         map = new TiledMap();
-        map.setOwnedResources(textures);
         mapLayer = new TiledMapTileLayer(mapWidth, mapHeight, tileWidth, tileHeight);
         map.getLayers().add(mapLayer);
+        final Array<Texture> textures = Array.with(tilesTexture);
+        map.setOwnedResources(textures);
     }
 }

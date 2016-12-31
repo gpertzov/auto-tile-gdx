@@ -11,13 +11,11 @@ public class GameScreen extends ScreenAdapter {
 
     private static final int MAP_WIDTH = 16;
     private static final int MAP_HEIGHT = 12;
-    private static final int TILE_WIDTH = 32;
-    private static final int TILE_HEIGHT = 32;
-    private static final float MAP_UNIT_SCALE = 1 / 32f;
 
     private TiledMap map;
     private OrthographicCamera camera;
     private OrthogonalTiledMapRenderer renderer;
+    private AutoTiler autoTiler;
 
     @Override
     public void show() {
@@ -28,10 +26,12 @@ public class GameScreen extends ScreenAdapter {
         camera.setToOrtho(false, MAP_WIDTH, MAP_HEIGHT);
 
         // Auto generate a new map
-        final AutoTiler autoTiler = new AutoTiler(MAP_WIDTH, MAP_HEIGHT, TILE_WIDTH, TILE_HEIGHT,
-                Gdx.files.internal("RPGTiles.png"), 31);
+        autoTiler = new AutoTiler(MAP_WIDTH, MAP_HEIGHT, Gdx.files.internal("tileset.json"));
         map = autoTiler.generateMap();
-        renderer = new OrthogonalTiledMapRenderer(map, MAP_UNIT_SCALE);
+
+        // Setup map renderer
+        final float unitScale = 1f / Math.max(autoTiler.getTileWidth(), autoTiler.getTileHeight());
+        renderer = new OrthogonalTiledMapRenderer(map, unitScale);
     }
 
     @Override
