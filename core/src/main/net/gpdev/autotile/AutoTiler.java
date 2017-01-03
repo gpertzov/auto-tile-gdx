@@ -78,6 +78,7 @@ public class AutoTiler {
     private int tileHeight;
     private List<List<Byte>> tileRowTerrains;
     private Map<Byte, TerrainType> terrainTypes;
+    private int maxTransitions;
     private Texture tilesTexture;
     private TiledMapTileSet tileSet;
     private TiledMap map;
@@ -157,7 +158,10 @@ public class AutoTiler {
             final byte tileCorner = getTerrainCodes(tileId)[TOP_RIGHT.id()];
             final byte maskCorner = matchMask[TOP_LEFT.id()];
             if (maskCorner != tileCorner) {
-                matchMask[TOP_RIGHT.id()] = terrainTypes.get(tileCorner).getTransitions().first();
+                final TreeSet<Byte> validTransitions = terrainTypes.get(tileCorner).getTransitions();
+                if (validTransitions.size() < maxTransitions) {
+                    matchMask[TOP_RIGHT.id()] = validTransitions.first();
+                }
             }
         }
 
@@ -335,7 +339,6 @@ public class AutoTiler {
                     id = currentTerrainId++;
                     nameToIdMap.put(terrainName, id);
                     terrainType = new TerrainType(id);
-                    terrainType.getTransitions().add(id);
                     terrainTypes.put(id, terrainType);
                 }
 
@@ -352,6 +355,8 @@ public class AutoTiler {
             terrainTypes.get(firstTerrainId).getTransitions().add(secondTerrainId);
             terrainTypes.get(secondTerrainId).getTransitions().add(firstTerrainId);
         }
+
+        maxTransitions = terrainTypes.size() - 1;
     }
 
     /**
