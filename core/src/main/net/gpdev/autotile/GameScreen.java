@@ -1,6 +1,7 @@
 package net.gpdev.autotile;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.ScreenAdapter;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -32,6 +33,17 @@ public class GameScreen extends ScreenAdapter {
         // Setup map renderer
         final float unitScale = 1f / Math.max(autoTiler.getTileWidth(), autoTiler.getTileHeight());
         renderer = new OrthogonalTiledMapRenderer(map, unitScale);
+
+        // Setup input processor
+        Gdx.input.setInputProcessor(new InputAdapter() {
+            @Override
+            public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+                // Generate a new procedural map on touch event
+                map = autoTiler.generateMap();
+                return true;
+            }
+        });
+
     }
 
     @Override
