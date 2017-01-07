@@ -12,6 +12,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
 import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
 public class GameScreen extends ScreenAdapter {
@@ -27,6 +28,7 @@ public class GameScreen extends ScreenAdapter {
     private OrthographicCamera camera;
     private OrthographicCamera guiCam;
     private Viewport viewport;
+    private ScreenViewport screenViewport;
     private OrthogonalTiledMapRenderer renderer;
     private AutoTiler autoTiler;
     private BitmapFont font;
@@ -41,16 +43,14 @@ public class GameScreen extends ScreenAdapter {
         // Setup camera
         camera = new OrthographicCamera();
         viewport = new FitViewport(MAP_WIDTH, MAP_HEIGHT, camera);
-        camera.setToOrtho(false);
-        viewport.apply(true);
 
         // Setup GUI camera
         guiCam = new OrthographicCamera();
-        guiCam.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        screenViewport = new ScreenViewport(guiCam);
+        guiCam.setToOrtho(false);
 
         // Setup font rendering
         batch = new SpriteBatch();
-        batch.setProjectionMatrix(guiCam.combined);
         font = new BitmapFont(Gdx.files.internal("arial-15.fnt"), false);
         font.setColor(PROMPT_COLOR);
         layout.setText(font, PROMPT_TEXT);
@@ -78,7 +78,8 @@ public class GameScreen extends ScreenAdapter {
     @Override
     public void resize(int width, int height) {
         super.resize(width, height);
-        viewport.update(width, height, true);
+        viewport.update(width, height);
+        screenViewport.update(width, height);
     }
 
     @Override
@@ -87,16 +88,22 @@ public class GameScreen extends ScreenAdapter {
         Gdx.gl.glClearColor(0f, 0f, 0f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        camera.update();
-
+        // Render map
+        viewport.apply(true);
         renderer.setView(camera);
         renderer.render();
 
         elapsedTime += delta;
 
+        // Render text prompt
+        screenViewport.apply(true);
+        batch.setProjectionMatrix(guiCam.combined);
         batch.begin();
-        font.setColor(PROMPT_COLOR.r, PROMPT_COLOR.g, PROMPT_COLOR.b, (elapsedTime - PROMPT_FADE_IN) % PROMPT_FADE_OUT);
-        font.draw(batch, PROMPT_TEXT, (guiCam.viewportWidth - layout.width) / 2.0f, guiCam.viewportHeight - layout.height);
+        font.setColor(PROMPT_COLOR.r, PROMPT_COLOR.g, PROMPT_COLOR.b,
+                (elapsedTime - PROMPT_FADE_IN) % PROMPT_FADE_OUT);
+        font.draw(batch, PROMPT_TEXT,
+                (screenViewport.getScreenWidth() - layout.width) / 2.0f,
+                screenViewport.getScreenHeight() - layout.height);
         batch.end();
     }
 
