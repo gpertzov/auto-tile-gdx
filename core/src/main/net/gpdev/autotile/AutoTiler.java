@@ -23,7 +23,8 @@ import static net.gpdev.autotile.AutoTiler.TILE_BITS.*;
 /**
  * AutoTiler
  *
- * Procedurally generate a terrain map using "Wang Tiles" corner matching
+ * Procedurally generate a terrain map using corner matching "Wang Tiles"
+ *  See: http://www.cr31.co.uk/stagecast/wang/2corn.html
  */
 public class AutoTiler {
 
