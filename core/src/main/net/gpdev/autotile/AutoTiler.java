@@ -139,7 +139,7 @@ public class AutoTiler {
      */
     private int pickTile(final int col, final int row) {
         // Init all match mask elements to "dont-care"
-        byte[] matchMask = new byte[]{MATCH_ANY, MATCH_ANY, MATCH_ANY, MATCH_ANY};
+        final byte[] matchMask = new byte[]{MATCH_ANY, MATCH_ANY, MATCH_ANY, MATCH_ANY};
 
         // Update match mask according to left tile corners
         updateMatchMaskForTile(matchMask,
@@ -276,7 +276,7 @@ public class AutoTiler {
      */
     private void init(FileHandle tilesetConfigFile) {
         // Load config
-        Json json = new Json();
+        final Json json = new Json();
         final TilesetConfig conf = json.fromJson(TilesetConfig.class, tilesetConfigFile);
 
         // Validate texture path
