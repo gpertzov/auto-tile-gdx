@@ -28,7 +28,7 @@ import static net.gpdev.autotile.AutoTiler.TILE_BITS.*;
  */
 public class AutoTiler {
 
-    private static String TAG = "AutoTiler";
+    private static final String TAG = "AutoTiler";
 
     private static final byte MATCH_ANY = 127;
 
@@ -372,8 +372,8 @@ public class AutoTiler {
         }
 
         // Validate number of tiles per row
-        for (int i = 0; i < numRows; i++) {
-            if (splitTiles[i].length != TILES_PER_TERRAIN) {
+        for (final TextureRegion[] splitTile : splitTiles) {
+            if (splitTile.length != TILES_PER_TERRAIN) {
                 throw new IllegalArgumentException("Each tileset row must have exactly " + TILES_PER_TERRAIN + " tiles");
             }
         }

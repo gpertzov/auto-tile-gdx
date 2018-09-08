@@ -32,7 +32,7 @@ public class GameScreen extends ScreenAdapter {
     private OrthogonalTiledMapRenderer renderer;
     private AutoTiler autoTiler;
     private BitmapFont font;
-    private GlyphLayout layout = new GlyphLayout();
+    private final GlyphLayout layout = new GlyphLayout();
     private SpriteBatch batch;
     private float elapsedTime = 0;
 
