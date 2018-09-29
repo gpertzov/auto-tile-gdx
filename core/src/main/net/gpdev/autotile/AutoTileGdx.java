@@ -4,17 +4,17 @@ import com.badlogic.gdx.Game;
 
 public class AutoTileGdx extends Game {
 
-    private GameScreen screen;
+    private GameScreen gameScreen;
 
     @Override
     public void create() {
-        screen = new GameScreen();
-        setScreen(screen);
+        gameScreen = new GameScreen();
+        setScreen(gameScreen);
     }
 
     @Override
     public void dispose() {
         super.dispose();
-        screen.dispose();
+        gameScreen.dispose();
     }
 }
